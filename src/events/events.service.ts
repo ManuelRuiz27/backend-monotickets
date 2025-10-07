@@ -48,10 +48,10 @@ export class EventsService {
       event.description = dto.description;
     }
     if (dto.startAt !== undefined) {
-      event.startAt = dto.startAt ? new Date(dto.startAt) : null;
+      event.startAt = dto.startAt ? new Date(dto.startAt) : undefined;
     }
     if (dto.endAt !== undefined) {
-      event.endAt = dto.endAt ? new Date(dto.endAt) : null;
+      event.endAt = dto.endAt ? new Date(dto.endAt) : undefined;
     }
     if (dto.capacity !== undefined) {
       event.capacity = dto.capacity;

@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 import { EventEntity } from '../../events/entities/event.entity';
 import { UserEntity } from '../../users/entities/user.entity';
 import { InviteStatus } from './invite-status.enum';
@@ -47,6 +47,6 @@ export class InviteEntity {
 
   static generateToken(): string {
     // [CONTRACT-LOCK:INVITE_TOKEN_UUID] NO MODIFICAR SIN MIGRACIÓN
-    return uuid();
+    return randomUUID();
   }
 }

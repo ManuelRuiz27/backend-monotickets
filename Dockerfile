@@ -1,11 +1,18 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS base
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
 
+FROM base AS development
+ENV NODE_ENV=development
+RUN npm ci
+COPY . .
+CMD ["npm", "run", "start:dev"]
+
+FROM base AS builder
+RUN npm ci
 COPY . .
 RUN npm run build
 

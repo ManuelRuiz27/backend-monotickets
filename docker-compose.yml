@@ -1,8 +1,9 @@
 version: '3.9'
 services:
   api:
-    build: .
-    command: npm run start:dev
+    build:
+      context: .
+      target: development
     volumes:
       - .:/app
       - /app/node_modules
