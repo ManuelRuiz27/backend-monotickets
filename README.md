@@ -29,6 +29,11 @@ docker compose up --build
 
 La API quedará disponible en `http://localhost:3000/api/v1`.
 
+### Endpoints de autenticación
+
+- `POST /api/v1/auth/login`: comparte flujo para administradores de eventos y personal de staff.
+- `POST /api/v1/superadmin/login`: autenticación exclusiva para el super administrador.
+
 ## Variables de entorno relevantes
 
 | Variable        | Descripción                               | Valor por defecto |
@@ -41,7 +46,7 @@ La API quedará disponible en `http://localhost:3000/api/v1`.
 
 - Las contraseñas se almacenan siempre con un hash `salted` mediante `scrypt`.
 - Los tokens incluyen fecha de expiración y se validan usando comparación en tiempo constante.
-- Las rutas protegidas aplican verificación estricta por rol (ADMIN o STAFF).
+- Las rutas protegidas aplican verificación estricta por rol (ADMIN, STAFF o SUPERADMIN según corresponda).
 - Cada petición se valida y devuelve errores explícitos con códigos HTTP apropiados.
 
 ## Rendimiento

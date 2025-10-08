@@ -8,10 +8,18 @@ class AuthService {
     this.expiresInSeconds = Number.isFinite(expires) && expires > 0 ? expires : 3600;
   }
 
-  async login(email, password) {
+  async login(email, password, options = {}) {
     const user = await this.usersService.validateCredentials(email, password);
     if (!user) {
-      throw new Error('Invalid credentials');
+      const error = new Error('Invalid credentials');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (options.allowedRoles && !options.allowedRoles.includes(user.role)) {
+      const error = new Error('Unauthorized role for this endpoint');
+      error.statusCode = 403;
+      throw error;
     }
     return this.createToken(user);
   }

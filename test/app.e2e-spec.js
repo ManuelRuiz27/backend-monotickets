@@ -5,6 +5,10 @@ describe('App E2E', () => {
   let server;
   let baseUrl;
   const insideCounts = {};
+  let seedData;
+  let adminCredentials;
+  let staffCredentials;
+  let superadminCredentials;
 
   const redisService = {
     async incrementInsideCount(eventId, delta) {
@@ -20,21 +24,30 @@ describe('App E2E', () => {
   };
 
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = 'test-secret';
     process.env.JWT_EXPIRES_IN = '3600';
     app = new MonoticketsApplication({ redisService, jwtSecret: 'test-secret', jwtExpiresInSeconds: 3600 });
     app.setGlobalPrefix('api/v1');
     await app.init();
-    await app.usersService.createUser({
-      email: 'admin@test.com',
-      password: 'Secret123!',
-      role: 'ADMIN',
-    });
-    await app.usersService.createUser({
-      email: 'staff@test.com',
-      password: 'Secret123!',
-      role: 'STAFF',
-    });
+
+    seedData = app.getSeedSummary();
+    if (!seedData) {
+      throw new Error('Expected seeded data to be available');
+    }
+    adminCredentials = {
+      email: seedData.admin.email,
+      password: seedData.admin.password,
+    };
+    staffCredentials = {
+      email: seedData.staff.email,
+      password: seedData.staff.password,
+    };
+    superadminCredentials = {
+      email: seedData.superadmin.email,
+      password: seedData.superadmin.password,
+    };
+
     server = await app.listen(0);
     const address = server.address();
     baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
@@ -60,8 +73,8 @@ describe('App E2E', () => {
 
   it('logs in admin and creates an event', async () => {
     const loginResponse = await post('/auth/login', {
-      email: 'admin@test.com',
-      password: 'Secret123!',
+      email: adminCredentials.email,
+      password: adminCredentials.password,
     });
     expect(loginResponse.status).toBe(201);
     const token = loginResponse.body.token;
@@ -78,8 +91,8 @@ describe('App E2E', () => {
 
   it('allows staff to check in a guest invite', async () => {
     const adminLogin = await post('/auth/login', {
-      email: 'admin@test.com',
-      password: 'Secret123!',
+      email: adminCredentials.email,
+      password: adminCredentials.password,
     });
     const adminToken = adminLogin.body.token;
 
@@ -99,8 +112,8 @@ describe('App E2E', () => {
     const inviteToken = inviteResponse.body.token;
 
     const staffLogin = await post('/auth/login', {
-      email: 'staff@test.com',
-      password: 'Secret123!',
+      email: staffCredentials.email,
+      password: staffCredentials.password,
     });
     const staffToken = staffLogin.body.token;
 
@@ -114,9 +127,34 @@ describe('App E2E', () => {
     expect(checkinResponse.body.insideCount).toBeGreaterThanOrEqual(1);
   });
 
+  it('allows checking in the seeded invite with staff credentials', async () => {
+    const staffLogin = await post('/auth/login', {
+      email: staffCredentials.email,
+      password: staffCredentials.password,
+    });
+    const staffToken = staffLogin.body.token;
+
+    const firstCheck = await post(
+      '/staff/checkin',
+      { code: seedData.invite.token, gate: 'SEED' },
+      staffToken,
+    );
+    expect(firstCheck.status).toBe(201);
+    expect(firstCheck.body.duplicate).toBe(false);
+    expect(firstCheck.body.eventId).toBe(seedData.event.id);
+
+    const secondCheck = await post(
+      '/staff/checkin',
+      { code: seedData.invite.token, gate: 'SEED' },
+      staffToken,
+    );
+    expect(secondCheck.status).toBe(201);
+    expect(secondCheck.body.duplicate).toBe(true);
+  });
+
   it('rejects invalid credentials and unauthorized event creation', async () => {
     const badLogin = await post('/auth/login', {
-      email: 'admin@test.com',
+      email: adminCredentials.email,
       password: 'wrong-password',
     });
     expect(badLogin.status).toBe(400);
@@ -130,8 +168,8 @@ describe('App E2E', () => {
 
   it('marks duplicate check-ins without incrementing the counter', async () => {
     const adminLogin = await post('/auth/login', {
-      email: 'admin@test.com',
-      password: 'Secret123!',
+      email: adminCredentials.email,
+      password: adminCredentials.password,
     });
     const adminToken = adminLogin.body.token;
 
@@ -150,8 +188,8 @@ describe('App E2E', () => {
     const inviteToken = inviteResponse.body.token;
 
     const staffLogin = await post('/auth/login', {
-      email: 'staff@test.com',
-      password: 'Secret123!',
+      email: staffCredentials.email,
+      password: staffCredentials.password,
     });
     const staffToken = staffLogin.body.token;
 
@@ -171,5 +209,20 @@ describe('App E2E', () => {
     expect(secondCheck.status).toBe(201);
     expect(secondCheck.body.duplicate).toBe(true);
     expect(secondCheck.body.insideCount).toBe(countAfterFirst);
+  });
+
+  it('permite autenticar al super admin solo via su endpoint dedicado', async () => {
+    const superLogin = await post('/superadmin/login', {
+      email: superadminCredentials.email,
+      password: superadminCredentials.password,
+    });
+    expect(superLogin.status).toBe(201);
+    expect(superLogin.body.token).toBeDefined();
+
+    const viaSharedEndpoint = await post('/auth/login', {
+      email: superadminCredentials.email,
+      password: superadminCredentials.password,
+    });
+    expect(viaSharedEndpoint.status).toBe(403);
   });
 });

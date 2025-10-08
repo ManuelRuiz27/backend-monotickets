@@ -27,6 +27,19 @@ class EventsService {
   async findById(eventId) {
     return this.events.get(eventId) || null;
   }
+
+  async findByTitle(title) {
+    if (!title || typeof title !== 'string') {
+      return null;
+    }
+    const normalizedTitle = title.trim().toLowerCase();
+    for (const event of this.events.values()) {
+      if (event.title.toLowerCase() === normalizedTitle) {
+        return { ...event };
+      }
+    }
+    return null;
+  }
 }
 
 module.exports = { EventsService };

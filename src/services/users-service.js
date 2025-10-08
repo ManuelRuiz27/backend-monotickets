@@ -13,8 +13,9 @@ class UsersService {
     if (!password || typeof password !== 'string') {
       throw new Error('Password is required');
     }
-    if (!role || (role !== 'ADMIN' && role !== 'STAFF')) {
-      throw new Error('Role must be ADMIN or STAFF');
+    const allowedRoles = ['ADMIN', 'STAFF', 'SUPERADMIN'];
+    if (!role || !allowedRoles.includes(role)) {
+      throw new Error(`Role must be one of: ${allowedRoles.join(', ')}`);
     }
     const normalizedEmail = email.trim().toLowerCase();
     if (this.emailIndex.has(normalizedEmail)) {
@@ -55,6 +56,19 @@ class UsersService {
       return null;
     }
     return this.sanitize(user);
+  }
+
+  async findByEmail(email) {
+    if (!email || typeof email !== 'string') {
+      return null;
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const userId = this.emailIndex.get(normalizedEmail);
+    if (!userId) {
+      return null;
+    }
+    const user = this.users.get(userId);
+    return user ? this.sanitize(user) : null;
   }
 
   async findById(id) {

@@ -9,15 +9,19 @@ const { RedisService } = require('./services/redis-service');
 
 class MonoticketsApplication {
   constructor(options = {}) {
-    const secret = options.jwtSecret || process.env.JWT_SECRET || 'monotickets-secret';
-    const expiresInSeconds = options.jwtExpiresInSeconds || Number(process.env.JWT_EXPIRES_IN) || 3600;
-    this.redisService = options.redisService || new RedisService();
+    this.options = { ...options };
+    const secret = this.options.jwtSecret || process.env.JWT_SECRET || 'monotickets-secret';
+    const expiresInSeconds = this.options.jwtExpiresInSeconds || Number(process.env.JWT_EXPIRES_IN) || 3600;
+    this.redisService = this.options.redisService || new RedisService();
     this.usersService = new UsersService();
     this.authService = new AuthService(this.usersService, { secret, expiresInSeconds });
     this.eventsService = new EventsService();
     this.invitesService = new InvitesService();
     this.checkinsService = new CheckinsService(this.invitesService, this.redisService);
     this.prefix = '/';
+    this.validationEnabled = false;
+    this.seeded = false;
+    this.sampleData = null;
     this.server = http.createServer(this.handleRequest.bind(this));
   }
 
@@ -30,6 +34,7 @@ class MonoticketsApplication {
   }
 
   async init() {
+    await this.seedInitialData();
     return this;
   }
 
@@ -67,6 +72,11 @@ class MonoticketsApplication {
 
       if (method === 'POST' && relativePath === '/auth/login') {
         await this.handleLogin(body, res);
+        return;
+      }
+
+      if (method === 'POST' && relativePath === '/superadmin/login') {
+        await this.handleSuperAdminLogin(body, res);
         return;
       }
 
@@ -157,7 +167,20 @@ class MonoticketsApplication {
     if (!email || !password) {
       throw new Error('Email and password are required');
     }
-    const token = await this.authService.login(email, password);
+    const token = await this.authService.login(email, password, {
+      allowedRoles: ['ADMIN', 'STAFF'],
+    });
+    this.send(res, 201, { token });
+  }
+
+  async handleSuperAdminLogin(body, res) {
+    const { email, password } = body;
+    if (!email || !password) {
+      throw new Error('Email and password are required');
+    }
+    const token = await this.authService.login(email, password, {
+      allowedRoles: ['SUPERADMIN'],
+    });
     this.send(res, 201, { token });
   }
 
@@ -191,6 +214,109 @@ class MonoticketsApplication {
     const { code, gate } = body;
     const result = await this.checkinsService.checkIn({ code, gate });
     this.send(res, 201, result);
+  }
+
+  shouldSeed() {
+    if (typeof this.options.seedInitialData === 'boolean') {
+      return this.options.seedInitialData;
+    }
+    if (typeof this.options.seed === 'boolean') {
+      return this.options.seed;
+    }
+    const envPreference = process.env.SEED_DATA ?? process.env.SEED_USERS;
+    if (!envPreference) {
+      return true;
+    }
+    const lowered = envPreference.toLowerCase();
+    return !['false', '0', 'no'].includes(lowered);
+  }
+
+  async seedInitialData() {
+    if (this.seeded || !this.shouldSeed()) {
+      return;
+    }
+
+    const admin = await this.ensureUser({
+      email: 'admin@monotickets.test',
+      password: 'Secret123!',
+      role: 'ADMIN',
+    });
+    const staff = await this.ensureUser({
+      email: 'staff@monotickets.test',
+      password: 'Secret123!',
+      role: 'STAFF',
+    });
+    const superadmin = await this.ensureUser({
+      email: 'superadmin@monotickets.test',
+      password: 'SuperSecret123!',
+      role: 'SUPERADMIN',
+    });
+
+    const demoEvent = await this.ensureEvent({
+      title: 'Demo Conference',
+      capacity: 250,
+      createdBy: admin.id,
+    });
+    const invite = await this.ensureInvite({
+      eventId: demoEvent.id,
+      recipientEmail: 'guest@monotickets.test',
+      createdBy: admin.id,
+    });
+
+    this.sampleData = {
+      admin: { ...admin, password: 'Secret123!' },
+      staff: { ...staff, password: 'Secret123!' },
+      superadmin: { ...superadmin, password: 'SuperSecret123!' },
+      event: demoEvent,
+      invite,
+    };
+    this.seeded = true;
+
+    if (this.options.logSeedOutput !== false && process.env.NODE_ENV !== 'test') {
+      // eslint-disable-next-line no-console
+      console.log(
+        'Seeded demo data:',
+        JSON.stringify(
+          {
+            admin: { email: this.sampleData.admin.email, password: this.sampleData.admin.password },
+            staff: { email: this.sampleData.staff.email, password: this.sampleData.staff.password },
+            superadmin: { email: this.sampleData.superadmin.email, password: this.sampleData.superadmin.password },
+            event: { id: demoEvent.id, title: demoEvent.title },
+            invite: { token: invite.token, recipientEmail: invite.recipientEmail },
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  }
+
+  async ensureUser({ email, password, role }) {
+    const existing = await this.usersService.findByEmail(email);
+    if (existing) {
+      return existing;
+    }
+    return this.usersService.createUser({ email, password, role });
+  }
+
+  async ensureEvent({ title, capacity, createdBy }) {
+    const existing = await this.eventsService.findByTitle(title);
+    if (existing) {
+      return existing;
+    }
+    return this.eventsService.createEvent({ title, capacity, createdBy });
+  }
+
+  async ensureInvite({ eventId, recipientEmail, createdBy }) {
+    const existing = await this.invitesService.findByRecipientAndEvent(recipientEmail, eventId);
+    if (existing) {
+      return existing;
+    }
+    return this.invitesService.createInvite({ eventId, recipientEmail, createdBy });
+  }
+
+  getSeedSummary() {
+    return this.sampleData;
   }
 }
 

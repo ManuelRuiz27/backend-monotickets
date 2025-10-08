@@ -36,6 +36,19 @@ class InvitesService {
     return this.invites.get(token) || null;
   }
 
+  async findByRecipientAndEvent(recipientEmail, eventId) {
+    if (!recipientEmail || typeof recipientEmail !== 'string' || !eventId) {
+      return null;
+    }
+    const normalizedEmail = recipientEmail.trim().toLowerCase();
+    for (const invite of this.invites.values()) {
+      if (invite.eventId === eventId && invite.recipientEmail === normalizedEmail) {
+        return { ...invite };
+      }
+    }
+    return null;
+  }
+
   async markConsumed(invite, gate) {
     if (!invite.consumedAt) {
       invite.consumedAt = new Date();
